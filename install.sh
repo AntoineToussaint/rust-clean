@@ -174,6 +174,24 @@ if [ "$COMPLETIONS" -eq 1 ]; then
     esac
 fi
 
+# Optional: bootstrap config via `rust-clean --init`
+CFG="${XDG_CONFIG_HOME:-$HOME/.config}/rust-clean/config.toml"
+if [ ! -f "$CFG" ] && [ "$YES" -ne 1 ] && [ -e /dev/tty ]; then
+    say ""
+    printf "  ${B}Run setup wizard now to pick scan roots? [Y/n]${R} "
+    read -r REPLY < /dev/tty 2>/dev/null || REPLY="n"
+    case "${REPLY:-y}" in
+        y|Y|yes|"")
+            say ""
+            # Reconnect stdin to /dev/tty so rich.Prompt works under `curl | bash`.
+            "$DEST" --init < /dev/tty
+            ;;
+        *)
+            say "  ${D}skipped. run [bold]rust-clean --init[/] later to configure.${R}"
+            ;;
+    esac
+fi
+
 say ""
 say "${GRN}${B}✓ installed${R}  — try:"
 say "    ${B}rust-clean --dry-run${R}"

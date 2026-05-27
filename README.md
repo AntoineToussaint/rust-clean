@@ -45,6 +45,7 @@ The installer:
 - copies `rust-clean` into `~/.local/bin`
 - installs shell completions for your `$SHELL` (zsh / bash / fish) — opt out with `--no-completions`
 - verifies `~/.local/bin` is on your `PATH` (prints the right shell-rc hint if not)
+- if no config exists yet, offers to run `rust-clean --init` immediately (the interactive setup wizard) — skipped silently with `--yes` or in non-interactive contexts
 
 **Requirements:** `uv` and `cargo`. Works on macOS and Linux.
 
