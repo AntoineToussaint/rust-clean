@@ -161,8 +161,25 @@ def write_default_config(path: Path, force: bool = False) -> bool:
     return True
 
 
+def _common_ancestor(paths: list[Path]) -> Path:
+    """Lowest common ancestor of a list of absolute paths. Empty list → root."""
+    if not paths:
+        return Path("/")
+    if len(paths) == 1:
+        # For a singleton, the LCA is the path itself — not very useful as a
+        # scan root. Use its parent instead so the suggestion covers siblings.
+        return paths[0].parent
+    common: list[str] = []
+    for parts in zip(*(p.parts for p in paths)):
+        if len(set(parts)) == 1:
+            common.append(parts[0])
+        else:
+            break
+    return Path(*common) if common else Path("/")
+
+
 def init_wizard(path: Path, scan_root: Path | None = None) -> bool:
-    """Scan ~, group crates by top-level dir, let user pick roots + ignores."""
+    """Scan ~, cluster crates into smart parent roots, let user pick + ignore."""
     if path.exists():
         if not Confirm.ask(f"  [yellow]{path} exists. overwrite?[/]", default=False):
             return False
@@ -170,7 +187,10 @@ def init_wizard(path: Path, scan_root: Path | None = None) -> bool:
     home = (scan_root or Path.home()).expanduser().resolve()
     console.print(f"  [dim]scanning {home} for Rust crates (this may take a moment)…[/]")
 
-    # Scan and group by the path-component directly under HOME.
+    # First pass: collect all crates, grouped by their depth-1 dir under home.
+    # Then for each group, compute the LCA → that's a tighter suggestion.
+    # Example: 14 worktrees in ~/.pilot/v2/worktrees/* → suggests
+    # ~/.pilot/v2/worktrees (not ~/.pilot, which would also touch caches etc.).
     groups: dict[str, list[Path]] = defaultdict(list)
     progress = Progress(
         SpinnerColumn(style="magenta"),
@@ -200,20 +220,38 @@ def init_wizard(path: Path, scan_root: Path | None = None) -> bool:
         return True
 
     console.print(f"  [green]✓[/] found [bold]{total}[/] crate(s) "
-                  f"across [bold]{len(groups)}[/] top-level dir(s) under {home}\n")
+                  f"across [bold]{len(groups)}[/] cluster(s) under {home}\n")
 
-    # Sort by crate count, descending. Default-yes for groups with ≥1 crate.
-    sorted_groups = sorted(groups.items(), key=lambda kv: -len(kv[1]))
-    selected: list[str] = []
+    # Compute the suggested root for each cluster: LCA of its crates.
+    # Then sort by crate count (densest first) so the user starts with the
+    # biggest wins.
     home_str = str(home)
     home_label = "~" if home == Path.home() else home_str
 
-    console.print("  [bold]include as scan root?[/]")
-    for top, crates in sorted_groups:
-        full = home / top
-        label = f"{home_label}/{top}" if top != "." else home_label
+    def displayable(p: Path) -> str:
+        return str(p).replace(home_str, home_label, 1)
+
+    suggestions: list[tuple[str, int, list[Path]]] = []
+    for _top, crates in groups.items():
+        root = _common_ancestor(crates)
+        # Safety clamp: never suggest above home.
+        try:
+            root.relative_to(home)
+        except ValueError:
+            root = home
+        suggestions.append((displayable(root), len(crates), crates))
+
+    suggestions.sort(key=lambda x: -x[1])
+    selected: list[str] = []
+
+    console.print("  [bold]include as scan root?[/] [dim](smart-grouped by lowest common ancestor)[/]")
+    for label, count, crates in suggestions:
+        # Show 1-2 example paths so the user can sanity-check.
+        sample = displayable(crates[0])
+        more = f" [dim](+{count - 1} more)[/]" if count > 1 else ""
+        console.print(f"    [dim]example:[/] {sample}{more}")
         if Confirm.ask(
-            f"    [cyan]{label}[/] [dim]({len(crates)} crate(s))[/]",
+            f"    [cyan]{label}[/] [dim]({count} crate(s))[/]",
             default=True,
         ):
             selected.append(label)
