@@ -43,6 +43,7 @@ cd rust-clean
 The installer:
 - checks for [`uv`](https://docs.astral.sh/uv/) (offers to install it via the official installer if missing)
 - copies `rust-clean` into `~/.local/bin`
+- installs shell completions for your `$SHELL` (zsh / bash / fish) — opt out with `--no-completions`
 - verifies `~/.local/bin` is on your `PATH` (prints the right shell-rc hint if not)
 
 **Requirements:** `uv` and `cargo`. Works on macOS and Linux.
@@ -53,6 +54,7 @@ The installer:
 |---|---|
 | `--dev` | Symlink to the local checkout instead of copying. Edits propagate. (Requires clone.) |
 | `--yes` | Non-interactive: auto-install `uv` if missing. Pipeable: `curl ... \| bash -s -- --yes`. |
+| `--no-completions` | Skip installing shell completions. |
 
 ## Usage
 
@@ -61,10 +63,11 @@ rust-clean --dry-run      # show what would be cleaned (no changes)
 rust-clean                # scan, list, prompt, clean
 rust-clean --yes          # skip the confirmation prompt
 rust-clean --days 7       # only clean target/ dirs idle for 7+ days
+rust-clean --hours 2      # debugging: anything not built in the last 2 hours
 rust-clean --root ~/code  # scan a specific directory
 ```
 
-By default `rust-clean` scans `~` and `~/.pilot`, skipping the usual irrelevant dirs (`Library`, `node_modules`, `.git`, `.cache`, `.cargo`, `.rustup`, etc.).
+By default `rust-clean` scans `~` and `~/.pilot`, skipping the usual irrelevant dirs (`Library`, `node_modules`, `.git`, `.cache`, `.cargo`, `.rustup`, etc.). Each root is walked recursively, so **git worktrees, monorepos, and nested crates are all picked up automatically** — every `Cargo.toml` with a sibling `target/` shows up as its own row.
 
 ### Why "stale"?
 
@@ -74,17 +77,39 @@ A `target/` is considered stale if the most recent file in its top-level is olde
 
 `rust-clean` reads `~/.config/rust-clean/config.toml` (or `$XDG_CONFIG_HOME/rust-clean/config.toml`) if present. CLI flags always win.
 
-Bootstrap a starter config:
+### Interactive setup (recommended)
 
 ```bash
 rust-clean --init
 ```
 
-That writes:
+Scans your home directory, groups the discovered crates by top-level dir, and walks you through picking which to include as scan roots, plus any extra dir names to ignore. Example:
+
+```
+✓ found 47 crate(s) across 3 top-level dir(s) under /Users/antoine
+
+include as scan root?
+  ~/Development (28 crate(s)) [Y/n]
+  ~/.pilot      (14 crate(s)) [Y/n]
+  ~/code         (5 crate(s)) [Y/n]
+
+extra dir names to ignore (comma-separated, blank to skip):
+> archive,vendored
+
+min age in days [1.0]: 3
+✓ wrote config to /Users/antoine/.config/rust-clean/config.toml
+```
+
+For scripted environments, `rust-clean --init --yes` skips the wizard and writes a static-default config.
+
+### Config file format
 
 ```toml
 # Directories to scan for Cargo.toml files (supports ~ expansion).
-roots = ["~", "~/.pilot"]
+roots = ["~/Development", "~/.pilot"]
+
+# Extra dir names to skip (added to the built-in skip list).
+ignore = ["archive", "vendored"]
 
 # Minimum age in days for a target/ dir to be considered stale.
 days = 1.0
@@ -102,19 +127,38 @@ Check what `rust-clean` resolved (file + flags merged):
 rust-clean --show-config
 ```
 
+## Shell completions
+
+The installer auto-installs completions for your `$SHELL`. To install manually, or re-install:
+
+```bash
+# zsh
+rust-clean --completion zsh > ~/.zsh/completions/_rust-clean
+# then in ~/.zshrc: fpath=(~/.zsh/completions $fpath); autoload -Uz compinit && compinit
+
+# bash
+rust-clean --completion bash > ~/.local/share/rust-clean/completion.bash
+# then in ~/.bashrc (or ~/.bash_profile on macOS): source ~/.local/share/rust-clean/completion.bash
+
+# fish (auto-loaded from this path)
+rust-clean --completion fish > ~/.config/fish/completions/rust-clean.fish
+```
+
 ## All flags
 
 | Flag | Default | Notes |
 |---|---|---|
 | `--root PATH` | `~`, `~/.pilot` | Repeatable. Overrides config. |
-| `--days N` | `1.0` | Minimum age (days). |
+| `--days N` | `1.0` | Minimum age in days. |
+| `--hours N` | | Minimum age in hours (mutually exclusive with `--days`). |
 | `--dry-run` | off | List candidates, don't clean. |
 | `--yes` | off | Skip the y/N prompt. |
 | `--size-jobs N` | `16` | Parallel workers for `du`-style sizing. |
 | `--clean-jobs N` | `4` | Parallel `cargo clean` workers. Disk-bound — modest values are best. |
 | `--config PATH` | `~/.config/rust-clean/config.toml` | Alternate config file. |
-| `--init` | | Write a starter config and exit. |
+| `--init` | | Interactive wizard to bootstrap a config (or `--init --yes` for static defaults). |
 | `--show-config` | | Print resolved config and exit. |
+| `--completion {bash,zsh,fish}` | | Print a shell completion script to stdout and exit. |
 
 ## How it works
 
@@ -134,7 +178,8 @@ rust-clean --show-config
 | Rust-specific | ✓ | ✓ | ✓ | no (multi-language) |
 | pretty preview table | ✓ | | | TUI |
 | parallel sizing/cleaning | ✓ | | | |
-| config file | ✓ | | | |
+| config file + interactive setup | ✓ | | | |
+| shell completions | ✓ | | | |
 
 Use `cargo-sweep` if you want maximum correctness. Use `rust-clean` if you want a pretty TUI and a config file.
 

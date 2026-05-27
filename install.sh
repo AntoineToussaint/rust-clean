@@ -8,10 +8,12 @@ set -euo pipefail
 
 DEV=0
 YES=0
+COMPLETIONS=1
 for arg in "$@"; do
     case "$arg" in
         --dev) DEV=1 ;;
         --yes|-y) YES=1 ;;
+        --no-completions) COMPLETIONS=0 ;;
         -h|--help)
             sed -n '2,6p' "$0" | sed 's/^# \{0,1\}//'
             exit 0 ;;
@@ -130,6 +132,47 @@ case ":$PATH:" in
         say "    ${B}export PATH=\"\$HOME/.local/bin:\$PATH\"${R}"
         ;;
 esac
+
+# Shell completions
+if [ "$COMPLETIONS" -eq 1 ]; then
+    case "${SHELL:-}" in
+        */zsh)
+            ZSH_DIR="${ZDOTDIR:-$HOME}/.zsh/completions"
+            mkdir -p "$ZSH_DIR"
+            "$DEST" --completion zsh > "$ZSH_DIR/_rust-clean"
+            ok "zsh completion → $ZSH_DIR/_rust-clean"
+            ZRC="${ZDOTDIR:-$HOME}/.zshrc"
+            if [ -f "$ZRC" ] && grep -qF "$ZSH_DIR" "$ZRC" 2>/dev/null; then
+                : # already wired
+            else
+                say ""
+                say "  ${D}add to your ~/.zshrc to enable:${R}"
+                say "    ${B}fpath=($ZSH_DIR \$fpath)${R}"
+                say "    ${B}autoload -Uz compinit && compinit${R}"
+            fi
+            ;;
+        */bash)
+            BASH_DIR="$HOME/.local/share/rust-clean"
+            mkdir -p "$BASH_DIR"
+            "$DEST" --completion bash > "$BASH_DIR/completion.bash"
+            ok "bash completion → $BASH_DIR/completion.bash"
+            if [ "$(uname -s)" = "Darwin" ]; then BRC="~/.bash_profile"; else BRC="~/.bashrc"; fi
+            say ""
+            say "  ${D}add to your $BRC to enable:${R}"
+            say "    ${B}source $BASH_DIR/completion.bash${R}"
+            ;;
+        */fish)
+            FISH_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions"
+            mkdir -p "$FISH_DIR"
+            "$DEST" --completion fish > "$FISH_DIR/rust-clean.fish"
+            ok "fish completion → $FISH_DIR/rust-clean.fish [auto-loaded]"
+            ;;
+        *)
+            warn "unknown shell (\$SHELL=${SHELL:-unset}); skipping completions"
+            warn "run: rust-clean --completion {bash,zsh,fish} > <your-completion-dir>"
+            ;;
+    esac
+fi
 
 say ""
 say "${GRN}${B}✓ installed${R}  — try:"
