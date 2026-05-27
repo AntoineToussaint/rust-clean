@@ -37,15 +37,29 @@ say "${MAG}${B}🦀  rust-clean installer${R}"
 say "${D}    cross-platform installer for the rust target cleaner${R}"
 say ""
 
-# Locate source script (next to this installer)
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC="$HERE/clean_rust_targets.py"
-if [ ! -f "$SRC" ]; then
-    err "clean_rust_targets.py not found next to install.sh"
-    err "expected at: $SRC"
-    exit 1
+# Locate source script: next to this installer (git clone) or fetch from GitHub (curl|bash)
+REMOTE_URL="https://raw.githubusercontent.com/AntoineToussaint/rust-clean/main/clean_rust_targets.py"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo "")"
+LOCAL_SRC="$HERE/clean_rust_targets.py"
+TMP_SRC=""
+
+if [ -n "$HERE" ] && [ -f "$LOCAL_SRC" ]; then
+    SRC="$LOCAL_SRC"
+    ok "using local source: $SRC"
+else
+    if [ "$DEV" -eq 1 ]; then
+        err "--dev requires running install.sh from the cloned repo"
+        exit 1
+    fi
+    TMP_SRC="$(mktemp -t rust-clean.XXXXXX.py)"
+    trap 'rm -f "$TMP_SRC"' EXIT
+    if ! curl -fsSL "$REMOTE_URL" -o "$TMP_SRC"; then
+        err "failed to fetch script from $REMOTE_URL"
+        exit 1
+    fi
+    SRC="$TMP_SRC"
+    ok "fetched source: $REMOTE_URL"
 fi
-ok "found source: $SRC"
 
 # Detect uv
 if ! command -v uv >/dev/null 2>&1; then

@@ -26,6 +26,14 @@ $ rust-clean --dry-run
 
 ## Install
 
+**One-liner** (macOS + Linux):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AntoineToussaint/rust-clean/main/install.sh | bash
+```
+
+**Or clone:**
+
 ```bash
 git clone https://github.com/AntoineToussaint/rust-clean.git
 cd rust-clean
@@ -43,16 +51,8 @@ The installer:
 
 | Flag | Effect |
 |---|---|
-| `--dev` | Symlink instead of copy. Edits to the source propagate. |
-| `--yes` | Non-interactive: auto-install `uv` if missing. |
-
-### One-liner
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/AntoineToussaint/rust-clean/main/install.sh | bash
-```
-
-> The installer needs the script next to it, so the one-liner clones first then runs. If you'd rather do it by hand: download `clean_rust_targets.py`, `chmod +x`, drop it anywhere on `PATH` as `rust-clean`.
+| `--dev` | Symlink to the local checkout instead of copying. Edits propagate. (Requires clone.) |
+| `--yes` | Non-interactive: auto-install `uv` if missing. Pipeable: `curl ... \| bash -s -- --yes`. |
 
 ## Usage
 
