@@ -65,7 +65,7 @@ _rust_clean() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    opts="--root --days --hours --dry-run --yes --size-jobs --clean-jobs --config --init --show-config --completion -h --help"
+    opts="--root --days --hours --dry-run --yes --size-jobs --clean-jobs --config --init --show-config --completion --cache -h --help"
     case "$prev" in
         --root|--config) COMPREPLY=( $(compgen -f -- "$cur") ); return ;;
         --completion) COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") ); return ;;
@@ -92,6 +92,7 @@ _rust_clean() {
         '--init[Write a starter config and exit]' \
         '--show-config[Print resolved config and exit]' \
         '--completion[Print completion script]:shell:(bash zsh fish)' \
+        '--cache[Clean ~/.cargo via cargo-cache]' \
         '(-h --help)'{-h,--help}'[Show help]'
 }
 _rust_clean "$@"
@@ -109,6 +110,7 @@ complete -c rust-clean -l config -d "Config path" -r -F
 complete -c rust-clean -l init -d "Write a starter config and exit"
 complete -c rust-clean -l show-config -d "Print resolved config and exit"
 complete -c rust-clean -l completion -d "Print completion script" -x -a "bash zsh fish"
+complete -c rust-clean -l cache -d "Clean ~/.cargo via cargo-cache"
 complete -c rust-clean -s h -l help -d "Show help"
 """.lstrip()
 
@@ -442,6 +444,64 @@ def render_table(candidates, age_hours: float, unit: str) -> Table:
     return table
 
 
+def clean_cache(yes: bool, dry_run: bool) -> int:
+    """Wrap `cargo cache --autoclean` to sweep ~/.cargo registry/git caches."""
+    cargo_dir = Path("~/.cargo").expanduser()
+    if not cargo_dir.exists():
+        console.print(f"  [yellow]{cargo_dir} doesn't exist; nothing to do.[/]")
+        return 0
+
+    if not shutil.which("cargo"):
+        console.print("[red bold]error:[/] `cargo` not found in PATH")
+        return 1
+
+    # Ensure cargo-cache is available.
+    if not shutil.which("cargo-cache"):
+        console.print("  [yellow]cargo-cache[/] [dim]is not installed.[/]")
+        if not yes and not Confirm.ask(
+            "  install it via [bold]cargo install cargo-cache[/]?", default=True
+        ):
+            console.print("  [dim]install yourself with:[/] [bold]cargo install cargo-cache[/]")
+            return 1
+        console.print("  [dim]installing cargo-cache (this can take a minute)…[/]")
+        r = subprocess.run(["cargo", "install", "cargo-cache"])
+        if r.returncode != 0 or not shutil.which("cargo-cache"):
+            console.print("[red]cargo install failed.[/]")
+            return r.returncode or 1
+
+    console.print(f"  [dim]sizing[/] {cargo_dir}…")
+    before = dir_size(cargo_dir)
+    console.print(f"  [bold]{cargo_dir}[/] currently uses [bold]{human_size(before)}[/]\n")
+
+    if dry_run:
+        console.print("  [dim]dry-run: showing what cargo-cache would do[/]\n")
+        subprocess.run(["cargo", "cache", "--dry-run", "--autoclean"])
+        return 0
+
+    if not yes and not Confirm.ask(
+        "  [bold]proceed with cargo cache --autoclean?[/] [dim](removes registry sources, "
+        "downloaded .crate files, and git checkouts — all re-fetchable)[/]",
+        default=False,
+    ):
+        console.print("[yellow]aborted.[/]")
+        return 0
+
+    console.print()
+    r = subprocess.run(["cargo", "cache", "--autoclean"])
+    if r.returncode != 0:
+        console.print(f"[red]cargo cache failed (exit {r.returncode})[/]")
+        return r.returncode
+
+    after = dir_size(cargo_dir)
+    reclaimed = max(0, before - after)
+    console.print(Panel(
+        f"[bold green]✓ freed ~{human_size(reclaimed)}[/]  "
+        f"[dim]({human_size(before)} → {human_size(after)})[/]",
+        border_style="green", box=ROUNDED,
+    ))
+    return 0
+
+
 def _run_clean(crate: Path):
     r = subprocess.run(
         ["cargo", "clean"], cwd=crate,
@@ -502,6 +562,8 @@ def main() -> int:
                    help="Print resolved config (after merging file + flags) and exit")
     p.add_argument("--completion", choices=["bash", "zsh", "fish"],
                    help="Print a shell completion script and exit")
+    p.add_argument("--cache", action="store_true",
+                   help="Clean ~/.cargo caches via cargo-cache (instead of target/ dirs)")
     args = p.parse_args()
 
     if args.completion:
@@ -509,6 +571,9 @@ def main() -> int:
         return 0
 
     console.print(banner())
+
+    if args.cache:
+        return clean_cache(args.yes, args.dry_run)
 
     cfg_path = args.config or config_path()
 

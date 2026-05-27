@@ -66,6 +66,7 @@ rust-clean --yes          # skip the confirmation prompt
 rust-clean --days 7       # only clean target/ dirs idle for 7+ days
 rust-clean --hours 2      # debugging: anything not built in the last 2 hours
 rust-clean --root ~/code  # scan a specific directory
+rust-clean --cache        # clean ~/.cargo registry + git caches (via cargo-cache)
 ```
 
 By default `rust-clean` scans `~` and `~/.pilot`, skipping the usual irrelevant dirs (`Library`, `node_modules`, `.git`, `.cache`, `.cargo`, `.rustup`, etc.). Each root is walked recursively, so **git worktrees, monorepos, and nested crates are all picked up automatically** — every `Cargo.toml` with a sibling `target/` shows up as its own row.
@@ -73,6 +74,16 @@ By default `rust-clean` scans `~` and `~/.pilot`, skipping the usual irrelevant 
 ### Why "stale"?
 
 A `target/` is considered stale if the most recent file in its top-level is older than `--days` (default 1). The check uses mtime, not rustc fingerprints — so `cargo build` resets the clock, and `touch target/` would too. If you want fingerprint-aware cleanup, look at [`cargo-sweep`](https://crates.io/crates/cargo-sweep).
+
+### `~/.cargo` cleanup (`--cache`)
+
+`rust-clean --cache` shells out to [`cargo-cache --autoclean`](https://crates.io/crates/cargo-cache) (auto-installed on first use). That covers the *other* big disk hogs in a typical Rust setup:
+
+- `~/.cargo/registry/cache/` — downloaded `.crate` files
+- `~/.cargo/registry/src/` — extracted sources
+- `~/.cargo/git/` — git dependency checkouts
+
+Everything cleaned this way is re-fetchable on the next build. Use `--dry-run` to preview what would be removed.
 
 ## Configuration
 
@@ -160,6 +171,7 @@ rust-clean --completion fish > ~/.config/fish/completions/rust-clean.fish
 | `--init` | | Interactive wizard to bootstrap a config (or `--init --yes` for static defaults). |
 | `--show-config` | | Print resolved config and exit. |
 | `--completion {bash,zsh,fish}` | | Print a shell completion script to stdout and exit. |
+| `--cache` | | Clean `~/.cargo` registry + git caches via [`cargo-cache`](https://crates.io/crates/cargo-cache) (auto-installed on first use). Works with `--dry-run` and `--yes`. |
 
 ## How it works
 
