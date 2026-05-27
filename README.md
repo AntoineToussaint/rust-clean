@@ -54,8 +54,9 @@ The installer:
 | Flag | Effect |
 |---|---|
 | `--dev` | Symlink to the local checkout instead of copying. Edits propagate. (Requires clone.) |
-| `--yes` | Non-interactive: auto-install `uv` if missing. Pipeable: `curl ... \| bash -s -- --yes`. |
+| `--yes` | Non-interactive: auto-install `uv` if missing, auto-edit shell rc files. Pipeable: `curl ... \| bash -s -- --yes`. |
 | `--no-completions` | Skip installing shell completions. |
+| `--no-rc-edit` | Skip the prompt to auto-add `fpath` / `source` lines to your shell rc. Just prints the lines for you to copy. |
 
 ## Usage
 

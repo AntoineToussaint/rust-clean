@@ -9,17 +9,45 @@ set -euo pipefail
 DEV=0
 YES=0
 COMPLETIONS=1
+RC_EDIT=1
 for arg in "$@"; do
     case "$arg" in
         --dev) DEV=1 ;;
         --yes|-y) YES=1 ;;
         --no-completions) COMPLETIONS=0 ;;
+        --no-rc-edit) RC_EDIT=0 ;;
         -h|--help)
             sed -n '2,6p' "$0" | sed 's/^# \{0,1\}//'
             exit 0 ;;
         *) echo "unknown arg: $arg" >&2; exit 2 ;;
     esac
 done
+
+# Helper: append lines to an rc file, idempotently and with a marker comment.
+# Args: $1 = rc path, $2 = grep-test string (skip if found), $3+ = lines to append
+rc_append() {
+    local rc="$1"; shift
+    local needle="$1"; shift
+    if [ -f "$rc" ] && grep -qF "$needle" "$rc" 2>/dev/null; then
+        return 1  # already present
+    fi
+    {
+        printf '\n# Added by rust-clean installer (https://github.com/AntoineToussaint/rust-clean)\n'
+        printf '%s\n' "$@"
+    } >> "$rc"
+    return 0
+}
+
+# Helper: yes/no prompt that works under `curl | bash`. Default = Y.
+ask_yes() {
+    local prompt="$1"
+    if [ "$YES" -eq 1 ]; then return 0; fi
+    if [ ! -e /dev/tty ]; then return 1; fi
+    printf "  ${B}%s${R} [Y/n] " "$prompt"
+    local reply
+    read -r reply < /dev/tty 2>/dev/null || return 1
+    case "${reply:-y}" in y|Y|yes|"") return 0 ;; *) return 1 ;; esac
+}
 
 # Colors (TTY only)
 if [ -t 1 ]; then
@@ -143,10 +171,17 @@ if [ "$COMPLETIONS" -eq 1 ]; then
             ok "zsh completion → $ZSH_DIR/_rust-clean"
             ZRC="${ZDOTDIR:-$HOME}/.zshrc"
             if [ -f "$ZRC" ] && grep -qF "$ZSH_DIR" "$ZRC" 2>/dev/null; then
-                : # already wired
+                ok "$ZRC already references $ZSH_DIR"
+            elif [ "$RC_EDIT" -eq 1 ] && ask_yes "add the fpath/compinit lines to $ZRC?"; then
+                if rc_append "$ZRC" "$ZSH_DIR" \
+                    "fpath=($ZSH_DIR \$fpath)" \
+                    "autoload -Uz compinit && compinit"; then
+                    ok "wired up completions in $ZRC"
+                    say "  ${D}restart your shell, or run: ${B}source $ZRC && rm -f ~/.zcompdump*${R}"
+                fi
             else
                 say ""
-                say "  ${D}add to your ~/.zshrc to enable:${R}"
+                say "  ${D}add to $ZRC to enable:${R}"
                 say "    ${B}fpath=($ZSH_DIR \$fpath)${R}"
                 say "    ${B}autoload -Uz compinit && compinit${R}"
             fi
@@ -156,10 +191,20 @@ if [ "$COMPLETIONS" -eq 1 ]; then
             mkdir -p "$BASH_DIR"
             "$DEST" --completion bash > "$BASH_DIR/completion.bash"
             ok "bash completion → $BASH_DIR/completion.bash"
-            if [ "$(uname -s)" = "Darwin" ]; then BRC="~/.bash_profile"; else BRC="~/.bashrc"; fi
-            say ""
-            say "  ${D}add to your $BRC to enable:${R}"
-            say "    ${B}source $BASH_DIR/completion.bash${R}"
+            if [ "$(uname -s)" = "Darwin" ]; then BRC="$HOME/.bash_profile"; else BRC="$HOME/.bashrc"; fi
+            if [ -f "$BRC" ] && grep -qF "$BASH_DIR/completion.bash" "$BRC" 2>/dev/null; then
+                ok "$BRC already sources rust-clean completion"
+            elif [ "$RC_EDIT" -eq 1 ] && ask_yes "source the completion file from $BRC?"; then
+                if rc_append "$BRC" "$BASH_DIR/completion.bash" \
+                    "source $BASH_DIR/completion.bash"; then
+                    ok "wired up completions in $BRC"
+                    say "  ${D}restart your shell, or run: ${B}source $BRC${R}"
+                fi
+            else
+                say ""
+                say "  ${D}add to $BRC to enable:${R}"
+                say "    ${B}source $BASH_DIR/completion.bash${R}"
+            fi
             ;;
         */fish)
             FISH_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions"
