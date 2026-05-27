@@ -41,8 +41,18 @@ SKIP_DIRS = {
     ".Trash", "Library", "Pictures", "Music", "Movies",
     # Linux
     "snap", ".var",
-    # shared
+    # Rust + build tooling
     ".cargo", ".rustup", ".cache", ".git", "node_modules",
+    # Other package managers (large, never contain crates)
+    ".npm", ".yarn", ".pnpm", ".gem", ".gradle", ".m2", ".bundle", ".cocoapods",
+    # Editors / IDEs
+    ".vscode", ".cursor", ".idea", ".zed", ".vim", ".emacs.d", ".claude",
+    # Language version managers
+    ".pyenv", ".rbenv", ".nvm", ".gvm", ".sdkman", ".asdf", ".volta",
+    # Cloud / infra tooling
+    ".docker", ".kube", ".aws", ".gcloud", ".azure", ".orbstack",
+    # XDG config / privacy
+    ".config", ".local", ".ssh", ".gnupg",
 }
 
 DEFAULTS: dict = {
@@ -286,7 +296,9 @@ def find_rust_targets(root: Path, extra_skip: set[str] | None = None):
     root = root.expanduser().resolve()
     skip = SKIP_DIRS | (extra_skip or set())
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
-        dirnames[:] = [d for d in dirnames if d not in skip and not d.startswith(".")]
+        # Skip explicitly-listed names. We *don't* skip every dot-dir by name
+        # since some (e.g. ~/.pilot) are legitimate project containers.
+        dirnames[:] = [d for d in dirnames if d not in skip]
         if "Cargo.toml" in filenames:
             crate = Path(dirpath)
             target = crate / "target"
