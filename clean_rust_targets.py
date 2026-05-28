@@ -307,19 +307,32 @@ def find_rust_targets(root: Path, extra_skip: set[str] | None = None):
             dirnames[:] = []
 
 
-def dir_mtime(path: Path) -> float:
+# Subdirs to skip when measuring "last source edit" — anything cargo or git
+# touches mechanically would otherwise mask real activity.
+_SRC_MTIME_SKIP = {"target", ".git", "node_modules", ".direnv"}
+
+
+def crate_source_mtime(crate: Path) -> float:
+    """Latest mtime across the crate's source tree, ignoring target/ & .git/.
+
+    Proxy for "when was this crate last worked on". target/ mtime is unusable:
+    cargo rewrites target/.rustc_info.json on every invocation, so even a
+    single `cargo check` from a daemon keeps the dir looking fresh forever.
+    """
+    latest = 0.0
     try:
-        latest = path.stat().st_mtime
-    except OSError:
-        return 0.0
-    try:
-        for entry in path.iterdir():
-            try:
-                latest = max(latest, entry.stat().st_mtime)
-            except OSError:
-                continue
+        latest = crate.stat().st_mtime
     except OSError:
         pass
+    for dirpath, dirnames, filenames in os.walk(crate, followlinks=False):
+        dirnames[:] = [d for d in dirnames if d not in _SRC_MTIME_SKIP]
+        for f in filenames:
+            try:
+                m = os.path.getmtime(os.path.join(dirpath, f))
+                if m > latest:
+                    latest = m
+            except OSError:
+                continue
     return latest
 
 
@@ -393,7 +406,7 @@ def scan(roots: list[str], cutoff: float, workers: int,
                 if target in seen:
                     continue
                 seen.add(target)
-                mtime = dir_mtime(target)
+                mtime = crate_source_mtime(crate)
                 if mtime < cutoff:
                     stale.append((crate, target, mtime))
             progress.remove_task(task)
